@@ -1,23 +1,34 @@
 # 数据要求有
-# tTimesequence, bid, ask, bidSize, askSize
+# tTimesequence, buy, sell, buySize, sellSize
 
 # 伪造数据
+# zz500 <- data.table(zz500)
+# 
+# k1 <- ceiling(runif(2864)*5)/100
+# zz500[, buy:=price-k1]
+# k2 <- ceiling(runif(2864)*5)/100
+# zz500[, sell:=price+k2]
+# 
+# k3 <- ceiling(runif(2864)*100)*100
+# k4 <- ceiling(runif(2864)*100)*100
+# 
+# zz500[, buySize:=k3]
+# zz500[, sellSize:=k4]
+# 
+# 
+# 
+
+zz500 <- read.csv(paste0(windbox, "SH600125.csv"), header=F)
+
+colnames(zz500)<-c("sym","dtime","trade_price","trade_vol","trade_amount","val_sp1","val_sp2","val_sp3","val_sp4","val_sp5","val_sv1","val_sv2","val_sv3","val_sv4","val_sv5","val_bp1","val_bp2","val_bp3","val_bp4","val_bp5","val_bv1","val_bv2","val_bv3","val_bv4","val_bv5","flg_buy","sc_vol","sc_amount","val_OI")
+
 zz500 <- data.table(zz500)
 
-k1 <- ceiling(runif(2864)*5)/100
-zz500[, bid:=price-k1]
-k2 <- ceiling(runif(2864)*5)/100
-zz500[, ask:=price+k2]
+zz500 <- zz500[trade_price>0, ]
 
-k3 <- ceiling(runif(2864)*100)*100
-k4 <- ceiling(runif(2864)*100)*100
+setnames(zz500, c("val_sp1", "val_sv1", "val_bp1", "val_bv1"), c("sell", "sellSize", "buy", "buySize"))
 
-zz500[, bidSize:=k3]
-zz500[, askSize:=k4]
-
-
-
-DT <- copy(zz500)
+DT <- zz500[, c("dtime", "sell", "sellSize", "buy", "buySize"), with=F]
 
 ###########################################################
 # 函数处理数据
@@ -27,15 +38,15 @@ DT <- copy(zz500)
 
 performClustering <- function(DT, P_min){
   # 计算S1, S2, S3
-  DT[, S1:=bidSize/100]
-  DT[, S2:=askSize/100]
-  DT[, S3:=ceiling(ask*100-bid*100)]
+  DT[, S1:=buySize/100]
+  DT[, S2:=sellSize/100]
+  DT[, S3:=ceiling(sell*100-buy*100)]
 
   # 把S1, S2, S3做成一个hash值
   rangeS2 <- 10 ^ (nchar(ceiling(max(DT$S2) - min(DT$S2))) + 1)
   rangeS3 <- 10 ^ (nchar(ceiling(max(DT$S3) - min(DT$S3))) + 1)
 
-  DT[, hashState:=S1*rangeS2*rangeS3 + S2*rangeS3 + S3]
+  DT[, hashState:=as.character(S1*rangeS2*rangeS3 + S2*rangeS3 + S3)]
   
   # 算每个state的出现频次, 以下每个state均以上一步计算的hash值代表
   stateList <- DT[, .("Occurrence"=.N, 
@@ -89,7 +100,7 @@ updateCluster <- function(newData, clusterList){}
 
 # 分类估计价格变动可能性及期望值
 featureEstimating <- function(DT, stateList, clusterList, delta_predict){
-  DT[, midPrice:=(bid+ask)/2]
+  DT[, midPrice:=(buy+sell)/2]
   priceChange <- DT[, c("tTimeSequence", "midPrice", "hashState"), with=F] 
   priceChange[, tTimeSequence:=tTimeSequence + delta_predict]
   setnames(priceChange, "midPrice", "midPricePast")
