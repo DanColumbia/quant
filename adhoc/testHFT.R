@@ -28,7 +28,12 @@ zz500 <- zz500[trade_price>0, ]
 
 setnames(zz500, c("val_sp1", "val_sv1", "val_bp1", "val_bv1"), c("sell", "sellSize", "buy", "buySize"))
 
-DT <- zz500[, c("dtime", "sell", "sellSize", "buy", "buySize"), with=F]
+zz500[, date:=as.Date(dtime)]
+
+oneday <- zz500[date=='2015-08-10',]
+
+DT <- oneday[, c("dtime", "sell", "sellSize", "buy", "buySize"), with=F]
+DT[, tTimeSequence:=seq(1:nrow(DT))]
 
 ###########################################################
 # 函数处理数据
@@ -43,10 +48,11 @@ performClustering <- function(DT, P_min){
   DT[, S3:=ceiling(sell*100-buy*100)]
 
   # 把S1, S2, S3做成一个hash值
-  rangeS2 <- 10 ^ (nchar(ceiling(max(DT$S2) - min(DT$S2))) + 1)
-  rangeS3 <- 10 ^ (nchar(ceiling(max(DT$S3) - min(DT$S3))) + 1)
+  # rangeS2 <- 10 ^ (nchar(ceiling(max(DT$S2) - min(DT$S2))) + 1)
+  # rangeS3 <- 10 ^ (nchar(ceiling(max(DT$S3) - min(DT$S3))) + 1)
 
-  DT[, hashState:=as.character(S1*rangeS2*rangeS3 + S2*rangeS3 + S3)]
+  # DT[, hashState:=as.character(S1*rangeS2*rangeS3 + S2*rangeS3 + S3)]
+  DT[, hashState:=paste0("B", S1, "S", S2, "D", S3)]
   
   # 算每个state的出现频次, 以下每个state均以上一步计算的hash值代表
   stateList <- DT[, .("Occurrence"=.N, 
@@ -127,6 +133,15 @@ featureEstimating <- function(DT, stateList, clusterList, delta_predict){
 
 
 # 根据预测的方向产生交易建议
+
+
+
+
+
+
+
+
+
 
 
 ###########################################################
