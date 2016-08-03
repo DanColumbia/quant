@@ -64,7 +64,7 @@ performClustering <- function(DT, P_min){
   stateList[, hashCluster:=hashState]
   
 
-  clusterList <- stateList[, c("hashCluster","S1_Centroid","S2_Centroid","S3_Centroid","Probability"), with=F]
+  clusterList <- stateList[, c("hashCluster","S1_Centroid","S2_Centroid","S3_Centroid","Probability","Occurrence"), with=F]
   
   minProbability <- min(clusterList$Probability)
   while(minProbability < P_min){
@@ -88,10 +88,11 @@ performClustering <- function(DT, P_min){
     stateList[hashCluster==updateCluster$hashCluster, hashCluster:=clusterHash]
 
     # 2.
-    clusterList <- clusterList[, .("S1_Centroid"=mean(S1_Centroid), 
-                                   "S2_Centroid"=mean(S2_Centroid), 
-                                   "S3_Centroid"=mean(S3_Centroid),
-                                   "Probability"=sum(Probability)), 
+    clusterList <- clusterList[, .("S1_Centroid"=weighted.mean(S1_Centroid, Occurrence), 
+                                   "S2_Centroid"=weighted.mean(S2_Centroid, Occurrence), 
+                                   "S3_Centroid"=weighted.mean(S3_Centroid, Occurrence),
+                                   "Probability"=sum(Probability),
+                                   "Occurrence"=sum(Occurrence)), 
                                by="hashCluster"]
     # 更新min probability
     minProbability <- min(clusterList$Probability)
@@ -101,7 +102,49 @@ performClustering <- function(DT, P_min){
   
 }
 
-updateCluster <- function(newData, clusterList){}
+updateClustering <- function(newData, clusterList, stateList){
+    # 计算S1, S2, S3
+    newData[, S1:=buySize/100]
+    newData[, S2:=sellSize/100]
+    newData[, S3:=ceiling(sell*100-buy*100)]
+    
+    # 把S1, S2, S3做成一个hash值
+    newData[, hashState:=paste0("B", S1, "S", S2, "D", S3)]
+
+    # 检测是否已存在于现有的stateList
+    notInCurrentStateList <- ifelse(newData$hashState %in% stateList$hashState, FALSE, TRUE)
+    
+    if(notInCurrentStateList){
+      # 拿这个newData去和所有的其他cluster比较
+      compareVector_update <- newData[, c("S1","S2","S3"), with=F]
+      compareList_update <- clusterList
+      compareList_update[, c("compareS1", "compareS2", "compareS3"):=compareVector_update]
+      compareList_update[, distance:= (S1_Centroid-compareS1)^2 + (S2_Centroid-compareS2)^2 + (S3_Centroid-compareS3)^2]
+      
+      
+      # 把与之相距最短的那个cluster作为这个state的新cluster, 并
+      # 1. 在stateList中加入当前newData
+      # 2. 更新newData并入的cluster的所有state的centroid和probability
+      minDist <- min(compareList_update$distance)
+      
+      # 1.
+      clusterHash <- compareList_update[distance==minDist & !duplicated(distance), ]$hashCluster
+      
+        # 先使得newData满足stateList的格式
+      newData[, Occurrence:=1]
+      newData[, Probability:=1]
+      newData[, hashCluster:=clusterHash]
+      setnames(newData, c("S1","S2","S3"), c("S1_Centroid","S2_Centroid","S3_Centroid"))
+      stateList <- rbind(stateList, newData[, c("hashState", "Occurrence", "S1_Centroid", "S2_Centroid", "S3_Centroid", "Probability", "hashCluster"), with=F])
+
+      # 2.
+      clusterList[hashCluster==clusterHash, S1_Centroid:= (S1_Centroid * Occurrence + newData$S1_Centroid)/(Occurrence + 1)]
+      clusterList[hashCluster==clusterHash, S2_Centroid:= (S2_Centroid * Occurrence + newData$S2_Centroid)/(Occurrence + 1)]
+      clusterList[hashCluster==clusterHash, S3_Centroid:= (S3_Centroid * Occurrence + newData$S3_Centroid)/(Occurrence + 1)]
+      clusterList[hashCluster==clusterHash, Occurrence:=Occurrence+1]
+    }
+    return(as.list(clusterList, stateList))
+}
 
 
 # 分类估计价格变动可能性及期望值
@@ -128,6 +171,7 @@ featureEstimating <- function(DT, stateList, clusterList, delta_predict){
   # 不用cluster，直接从DT算就行了
   E_D <- mean(priceChange$midPriceChange)
   
+  return(as.list(P_DS, E_DS, E_D))
   
 }
 
